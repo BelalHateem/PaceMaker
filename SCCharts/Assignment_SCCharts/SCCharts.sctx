@@ -1,0 +1,137 @@
+#resource "timing.h"
+#hostcode-c "#include \"timing.h\""
+@ClocksUseSD
+
+scchart PaceMaker {
+    input bool AS, VS
+    output signal AP, VP
+
+    // Define variables here
+    host "int" AVI_CON = `AVI_VALUE` // Initialize with AVI_VALUE
+    host "int" AEI_CON = `AEI_VALUE` // Initialize with AEI_VALUE
+    host "int" PVARP_CON = `PVARP_VALUE` // Initialize with PVARP_VALUE
+    host "int" VRP_CON = `VRP_VALUE` // Initialize with VRP_VALUE
+    host "int" LRI_CON = `LRI_VALUE` // Initialize with LRI_VALUE
+    host "int" URI_CON = `URI_VALUE` // Initialize with URI_VALUE
+
+    bool AVI, PVARP, VRP, AEI, LRI, URI
+    signal AVI_event, PVARP_event, VRP_event, AEI_event, LRI_event, URI_event
+
+    region rAVI {
+        clock AVI_clock = 0
+
+        initial state init {
+            entry do AVI = false
+            exit do AVI = true
+        }
+
+        // if an atrium event happens and the PVARP has run out, or the AEI timer ran out
+        if (AS && !PVARP) || AEI_event go to event
+
+        state event {
+            entry do AVI_clock = 0
+            exit do AVI_event
+        }
+
+        // if the AVI timer runs out and URI has run out, or the LRI has run out, we V pace
+        if (AVI_clock >= AVI_CON && !URI) || !pre(LRI) do VP go to init
+        // or a V sense is detected and the VRP timer hasnt run out
+        if VS && !VRP go to init
+    }
+
+    region rPVARP {
+        clock PVARP_clock = 0
+
+        initial state init {
+            entry do PVARP = false
+            exit do PVARP = true
+        }
+
+        // using pre as other wise there are concureny errors
+        // PVARP is started after either the AVI timer runs out or a V event happened
+        if pre(AVI_event) go to event
+
+        state event {
+            entry do PVARP_clock = 0
+        }
+
+        if PVARP >= PVARP_CON go to init
+    }
+
+    // similar to PVARP
+    region rVRP {
+        clock VRP_clock = 0
+
+        initial state init {
+            entry do VRP = false
+            exit do VRP = true
+        }
+
+        if pre(AVI_event) go to event
+
+        state event {
+            entry do VRP_clock = 0
+        }
+
+        if VRP_clock >= VRP_CON go to init
+    }
+
+    region rAEI {
+        clock AEI_clock = 0
+
+        initial state init {
+            entry do AEI = false
+            exit do AEI = true
+        }
+
+        if pre(AVI_event) go to event
+
+        state event {
+            entry do AEI_clock = 0
+            exit do AEI_event
+        }
+
+        // A is paced, if the AEI timer runs out 
+        if AEI_clock >= AEI_CON do AP go to init
+        if AS go to init
+    }
+
+    region rLRI {
+        clock LRI_clock = 0
+
+        initial state init {
+            entry do LRI = false
+            exit do LRI = true
+        }
+
+        if pre(AVI_event) go to event
+
+        state event {
+            entry do LRI_clock = 0
+        }
+
+        // if the A is paced or sensed, reset LRI
+        if AVI_event go to init
+        // other wise the clock runs out
+        if (LRI_clock >= LRI_CON) go to init
+    }
+
+    region rURI {
+        clock URI_clock = 0
+
+        initial state init {
+            entry do URI = false
+            exit do URI = true
+        }
+
+        if pre(AVI_event) go to event
+
+        state event {
+            entry do URI_clock = 0
+        }
+
+        // uri
+        if URI_clock >= URI_CON go to init
+    }
+
+}
